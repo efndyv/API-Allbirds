@@ -1,9 +1,12 @@
 const express = require("express");
-const Joi = require("joi");
 const app = express();
 const cors = require("cors");
 const multer = require("multer");
 const { v4: uuidv4 } = require("uuid");
+
+const bcrypt = require("bcrypt");
+const jwt = require("jsonwebtoken");
+require("dotenv").config();
 
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
@@ -187,6 +190,26 @@ const productsData = [
   },
 ];
 
+const users = [
+  {
+    fullname: "Alice Johnson",
+    email: "admin@example.com",
+    role: "admin",
+    password: bcrypt.hashSync("admin123", 10),
+  },
+  {
+    fullname: "Bob Smith",
+    email: "bob@example.com",
+    role: "user",
+    password: bcrypt.hashSync("BobPassword456!", 10),
+  },
+  {
+    fullname: "Charlie Kim",
+    email: "charlie@example.com",
+    role: "user",
+    password: bcrypt.hashSync("Charlie789#", 10),
+  },
+];
 /***********************************************************/
 /********* GET: ALL PRODUCTS **********/
 /***********************************************************/
@@ -266,25 +289,53 @@ app.delete("/api/products/:id", (req, res) => {
   res.send(productsData);
 });
 
-function validateProduct(product) {
-  const schema = Joi.object({
-    title: Joi.string().min(3).required(),
-    price: Joi.number().required(),
-    img: Joi.string().required(),
-  });
+app.post("/api/auth/register", (req, res) => {
+  const { fullname, email, password, confirmPassword } = req.body;
 
-  return schema.validate(product);
-}
+  if (fullname.trim() === "")
+    return res.status(400).send("Ad yazmağınız tələb olunur");
+  if (email.trim() === "")
+    return res.status(400).send("Email yazmağınız tələb olunur");
+  if (password.trim() === "")
+    return res.status(400).send("Şifrə yazmağınız tələb olunur");
+  if (password !== confirmPassword) {
+    return res.status(400).send("Şifrə eyni deyil");
+  }
+  const hashedPassword = bcrypt.hashSync(password, 10);
+  try {
+    const newUser = {
+      fullname,
+      email,
+      password: hashedPassword,
+      role: "user",
+    };
+    users.push(newUser);
+    res.send("İstifadəçi qeydiyyatı tamamlandı.");
+  } catch (error) {
+    res.status(500).send("Xəta registerUser: " + error.message);
+  }
+});
 
-function validateUpdateProduct(product) {
-  const schema = Joi.object({
-    title: Joi.string().min(3).required(),
-    price: Joi.number().required(),
-    img: Joi.string(),
-  });
+app.post("/api/auth/login", (req, res) => {
+  const { email, password } = req.body;
 
-  return schema.validate(product);
-}
+  try {
+    const user = users.find((user) => user.email === email);
+    console.log(user);
+    if (!user || !bcrypt.compareSync(password, user.password)) {
+      return res.status(401).send("Yalnış email və ya şifrə");
+    }
+    const token = jwt.sign(
+      { userId: user._id, role: user.role },
+      // process.env.JWT_SECRET,
+      "salam123",
+      { expiresIn: "1w" }
+    );
+    res.send({ token });
+  } catch (error) {
+    res.status(500).send("Xəta loginUser: " + error.message);
+  }
+});
 
 /********* PORT **********/
 const PORT = process.env.PORT || 5000;
